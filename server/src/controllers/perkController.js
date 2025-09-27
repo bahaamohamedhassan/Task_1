@@ -1,20 +1,24 @@
 import Joi from 'joi';
 import { Perk } from '../models/Perk.js';
 
-// validation schema for creating/updating a perk
-const perkSchema = Joi.object({
-  // check that title is at least 2 characters long, and required
-  title: Joi.string().min(2).required(),
-  // description is optional
-  description: Joi.string().allow(''),
-  // category must be one of the defined values, default to 'other'
-  category: Joi.string().valid('food','tech','travel','fitness','other').default('other'),
-  // discountPercent must be between 0 and 100, default to 0
-  discountPercent: Joi.number().min(0).max(100).default(0),
-  // merchant is optional
-  merchant: Joi.string().allow('')
 
-}); 
+// validation schema for creating a perk (with defaults)
+const perkSchema = Joi.object({
+  title: Joi.string().min(2).required(),
+  description: Joi.string().allow(''),
+  category: Joi.string().valid('food','tech','travel','fitness','other').default('other'),
+  discountPercent: Joi.number().min(0).max(100).default(0),
+  merchant: Joi.string().allow('')
+});
+
+// validation schema for updating a perk (no defaults)
+const perkUpdateSchema = Joi.object({
+  title: Joi.string().min(2),
+  description: Joi.string().allow(''),
+  category: Joi.string().valid('food','tech','travel','fitness','other'),
+  discountPercent: Joi.number().min(0).max(100),
+  merchant: Joi.string().allow('')
+});
 
   
 
@@ -70,7 +74,32 @@ export async function createPerk(req, res, next) {
 // TODO
 // Update an existing perk by ID and validate only the fields that are being updated 
 export async function updatePerk(req, res, next) {
-  
+  try {
+    // Validate only provided fields (partial update)
+  // Use update schema (no defaults) for validation
+  const { value, error } = perkUpdateSchema.validate(req.body, { presence: 'optional' });
+    if (error) return res.status(400).json({ message: error.message });
+    // Remove keys that are undefined or empty string (except for fields that allow empty string)
+    const updateFields = {};
+    for (const key in value) {
+      // Only update if the value is not undefined and not an empty string (unless the schema allows empty string)
+      if (value[key] !== undefined && !(typeof value[key] === 'string' && value[key] === '' && key !== 'description' && key !== 'merchant')) {
+        updateFields[key] = value[key];
+      }
+    }
+    if (Object.keys(updateFields).length === 0) {
+      return res.status(400).json({ message: 'No valid fields to update' });
+    }
+    const doc = await Perk.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    );
+    if (!doc) return res.status(404).json({ message: 'Perk not found' });
+    res.json({ perk: doc });
+  } catch (err) {
+    next(err);
+  }
 }
 
 
